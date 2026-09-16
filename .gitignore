@@ -7,5 +7,7 @@ build/
 .eggs/
 *.egg
 .pytest_cache/
-output/
+output/*
+!output/demo_result.png
+!output/mcp_output.png
 uv.lock
