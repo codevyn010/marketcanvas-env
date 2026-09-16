@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MarketCanvas — RL Environment Showcase</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #1a1a22; color: #dcdce6; display: flex; height: 100vh; overflow: hidden; }
+
+  #canvas-area { flex: 1; display: flex; align-items: center; justify-content: center; padding: 20px; position: relative; }
+  #design-canvas { background: #fff; box-shadow: 0 4px 24px rgba(0,0,0,0.5); border-radius: 6px; }
+
+  #sidebar { width: 360px; background: #22222c; padding: 24px 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; border-left: 1px solid #333; }
+
+  h2 { font-size: 20px; font-weight: 700; color: #fff; letter-spacing: -0.3px; }
+  .subtitle { font-size: 12px; color: #666; margin-top: 2px; }
+  .label { font-size: 11px; text-transform: uppercase; color: #8c8c9b; margin-bottom: 6px; letter-spacing: 0.5px; font-weight: 600; }
+
+  .prompt-box { background: #2e2e3a; border: 1px solid #444; border-radius: 8px; padding: 12px; font-size: 14px; color: #dcdce6; width: 100%; min-height: 70px; resize: vertical; font-family: inherit; outline: none; transition: border-color 0.2s; line-height: 1.5; }
+  .prompt-box:focus { border-color: #50e080; }
+
+  .btn-generate { background: linear-gradient(135deg, #50e080, #30b060); color: #fff; border: none; border-radius: 8px; padding: 12px 0; width: 100%; cursor: pointer; font-size: 14px; font-weight: 700; margin-top: 8px; letter-spacing: 0.3px; transition: all 0.2s; }
+  .btn-generate:hover { filter: brightness(1.1); transform: translateY(-1px); }
+  .btn-generate:active { transform: translateY(0); }
+  .btn-generate:disabled { opacity: 0.5; cursor: not-allowed; transform: none; filter: none; }
+
+  .constraints { font-size: 12px; color: #8c8c9b; margin-top: 6px; }
+
+  .reward-section { display: flex; flex-direction: column; gap: 8px; }
+  .reward-row { display: flex; align-items: center; gap: 10px; }
+  .reward-label { font-size: 12px; width: 85px; color: #b0b0be; }
+  .reward-bar-bg { flex: 1; height: 14px; background: #2e2e3a; border-radius: 7px; overflow: hidden; }
+  .reward-bar { height: 100%; border-radius: 7px; transition: width 0.5s ease; }
+  .reward-val { font-size: 12px; width: 38px; text-align: right; color: #8c8c9b; font-variant-numeric: tabular-nums; }
+
+  .total-reward { font-size: 26px; font-weight: 800; text-align: center; padding: 14px; border-radius: 10px; background: #2e2e3a; transition: all 0.5s; letter-spacing: -0.5px; }
+  .total-reward.good { color: #50e080; }
+  .total-reward.bad { color: #f05050; }
+  .total-reward.neutral { color: #888; }
+
+  /* Agent log */
+  .agent-log { background: #1a1a22; border-radius: 8px; padding: 10px 12px; max-height: 180px; overflow-y: auto; font-family: 'SF Mono', 'Consolas', monospace; font-size: 12px; line-height: 1.8; }
+  .log-entry { color: #666; transition: color 0.3s; }
+  .log-entry.active { color: #50e080; }
+  .log-entry.done { color: #b0b0be; }
+  .log-step { color: #508cff; font-weight: 600; margin-right: 6px; }
+
+  .step-counter { font-size: 13px; text-align: center; color: #666; }
+  .step-counter strong { color: #50e080; }
+
+  .action-row { display: flex; gap: 8px; }
+  .action-btn { flex: 1; padding: 10px; border: none; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; transition: all 0.15s; }
+  .btn-save { background: #2e2e3a; color: #ccc; }
+  .btn-save:hover { background: #3c3c48; }
+  .btn-clear { background: #2e2e3a; color: #ccc; }
+  .btn-clear:hover { background: #5a3030; color: #f0a0a0; }
+
+  /* Manual tools */
+  .tools-row { display: flex; gap: 6px; flex-wrap: wrap; }
+  .tool-btn { padding: 6px 12px; border: none; border-radius: 5px; cursor: pointer; font-size: 11px; font-weight: 600; background: #2e2e3a; color: #888; transition: all 0.15s; }
+  .tool-btn:hover { background: #3c3c48; color: #ccc; }
+  .tool-btn.active { background: #508cff; color: #fff; }
+
+  .divider { height: 1px; background: #333; margin: 4px 0; }
+  .section-label { font-size: 10px; text-transform: uppercase; color: #555; letter-spacing: 0.8px; }
+</style>
+</head>
+<body>
+
+<div id="canvas-area">
+  <canvas id="design-canvas" width="800" height="600"></canvas>
+</div>
+
+<div id="sidebar">
+  <div>
+    <h2>MarketCanvas</h2>
+    <div class="subtitle">RL Environment — Agent Replay</div>
+  </div>
+
+  <div>
+    <div class="label">Target Prompt</div>
+    <textarea class="prompt-box" id="prompt-input">Create a Summer Sale banner with a headline, a yellow CTA button, and good contrast</textarea>
+    <button class="btn-generate" id="btn-generate">Generate</button>
+    <div class="constraints" id="constraints"></div>
+  </div>
+
+  <div>
+    <div class="label">Agent Actions</div>
+    <div class="agent-log" id="agent-log">
+      <div style="color:#555; font-style:italic;">Enter a prompt and click Generate to watch the agent build a design.</div>
+    </div>
+    <div class="step-counter" id="step-counter"></div>
+  </div>
+
+  <div>
+    <div class="label">Reward Breakdown</div>
+    <div class="reward-section" id="reward-section"></div>
+  </div>
+
+  <div class="total-reward neutral" id="total-reward">Reward: —</div>
+
+  <div class="divider"></div>
+
+  <div>
+    <div class="section-label">Manual Edit</div>
+    <div class="tools-row" style="margin-top:6px;">
+      <button class="tool-btn active" data-tool="select">Select</button>
+      <button class="tool-btn" data-tool="text">Text</button>
+      <button class="tool-btn" data-tool="rect">Rect</button>
+      <button class="tool-btn" data-tool="button">Button</button>
+      <button class="tool-btn" data-tool="image">Image</button>
+    </div>
+  </div>
+
+  <div class="action-row">
+    <button class="action-btn btn-save" id="btn-save">Save PNG</button>
+    <button class="action-btn btn-clear" id="btn-clear">Clear</button>
+  </div>
+</div>
+
+<script>
+const cvs = document.getElementById('design-canvas');
+const ctx = cvs.getContext('2d');
+let state = { elements: [] };
+let scores = {};
+let currentTool = 'select';
+let selectedId = null;
+let generating = false;
+
+// Drag / resize state
+let dragging = false, resizing = false;
+let dragOffset = { x: 0, y: 0 };
+let resizeAnchor = { x: 0, y: 0 };
+const HANDLE_SIZE = 8;
+
+// ------ API ------
+async function api(url, method = 'GET', body = null) {
+  const opts = { method, headers: { 'Content-Type': 'application/json' } };
+  if (body) opts.body = JSON.stringify(body);
+  const res = await fetch(url, opts);
+  return res.json();
+}
+
+async function refreshState() {
+  const data = await api('/api/state');
+  state = data.state;
+  scores = data.scores;
+  render();
+  updateRewards();
+}
+
+// ------ Rendering ------
+function render() {
+  ctx.clearRect(0, 0, 800, 600);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, 800, 600);
+
+  for (const el of state.elements || []) {
+    ctx.save();
+    if (el.type === 'shape') {
+      ctx.fillStyle = rgbStr(el.fill_color);
+      ctx.fillRect(el.x, el.y, el.width, el.height);
+      if (el.border_color) {
+        ctx.strokeStyle = rgbStr(el.border_color);
+        ctx.lineWidth = 2;
+        ctx.strokeRect(el.x, el.y, el.width, el.height);
+      }
+    } else if (el.type === 'image') {
+      ctx.fillStyle = rgbStr(el.fill_color);
+      ctx.fillRect(el.x, el.y, el.width, el.height);
+      ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(el.x, el.y); ctx.lineTo(el.x + el.width, el.y + el.height);
+      ctx.moveTo(el.x + el.width, el.y); ctx.lineTo(el.x, el.y + el.height);
+      ctx.stroke();
+      drawCenteredText(el, el.label || 'IMG', 'rgba(255,255,255,0.7)', 13);
+    } else if (el.type === 'text') {
+      drawCenteredText(el, el.content, rgbStr(el.text_color), el.font_size || 16);
+    }
+    ctx.restore();
+  }
+
+  // Selection outline + resize handle
+  if (selectedId !== null) {
+    const el = (state.elements || []).find(e => e.id === selectedId);
+    if (el) {
+      ctx.save();
+      ctx.strokeStyle = '#508cff';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 3]);
+      ctx.strokeRect(el.x - 3, el.y - 3, el.width + 6, el.height + 6);
+      ctx.restore();
+      ctx.save();
+      ctx.fillStyle = '#508cff';
+      ctx.fillRect(el.x + el.width - HANDLE_SIZE/2, el.y + el.height - HANDLE_SIZE/2, HANDLE_SIZE, HANDLE_SIZE);
+      ctx.restore();
+    }
+  }
+}
+
+function drawCenteredText(el, text, color, size) {
+  ctx.fillStyle = color;
+  ctx.font = `bold ${size}px -apple-system, BlinkMacSystemFont, sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, el.x + el.width / 2, el.y + el.height / 2, el.width - 8);
+}
+
+function rgbStr(arr) {
+  if (!arr) return '#ccc';
+  return `rgb(${arr[0]},${arr[1]},${arr[2]})`;
+}
+
+// ------ Rewards ------
+function updateRewards() {
+  const components = ['constraint', 'overlap', 'alignment', 'contrast', 'balance'];
+  let html = '';
+  for (const name of components) {
+    const val = scores[name] || 0;
+    const pct = Math.max(0, Math.min(100, val * 100));
+    const barColor = val >= 0.7 ? '#50e080' : (val >= 0.4 ? '#508cff' : '#f05050');
+    html += `<div class="reward-row">
+      <span class="reward-label">${name.charAt(0).toUpperCase() + name.slice(1)}</span>
+      <div class="reward-bar-bg"><div class="reward-bar" style="width:${pct}%;background:${barColor}"></div></div>
+      <span class="reward-val">${val.toFixed(2)}</span>
+    </div>`;
+  }
+  document.getElementById('reward-section').innerHTML = html;
+
+  const total = scores.reward != null ? scores.reward : 0;
+  const totalEl = document.getElementById('total-reward');
+  totalEl.textContent = `Reward: ${total >= 0 ? '+' : ''}${total.toFixed(3)}`;
+  totalEl.className = 'total-reward ' + (total > 0.3 ? 'good' : (total < -0.3 ? 'bad' : 'neutral'));
+}
+
+// ------ Agent Replay ------
+document.getElementById('btn-generate').addEventListener('click', async () => {
+  if (generating) return;
+  generating = true;
+  selectedId = null;
+  const btn = document.getElementById('btn-generate');
+  btn.disabled = true;
+  btn.textContent = 'Generating...';
+
+  const promptText = document.getElementById('prompt-input').value;
+  const data = await api('/api/generate', 'POST', { prompt: promptText });
+
+  state = data.state;
+  scores = data.scores;
+  render();
+  updateRewards();
+
+  const c = data.constraints || [];
+  document.getElementById('constraints').textContent =
+    'Detected: ' + (c.length ? c.join(', ') : 'headline, cta_button (defaults)');
+
+  const steps = data.steps || [];
+  const logEl = document.getElementById('agent-log');
+  const counterEl = document.getElementById('step-counter');
+  logEl.innerHTML = '';
+
+  // Build log entries
+  for (let i = 0; i < steps.length; i++) {
+    const entry = document.createElement('div');
+    entry.className = 'log-entry';
+    entry.id = 'log-' + i;
+    entry.innerHTML = `<span class="log-step">Step ${i + 1}</span>${steps[i].step_label || steps[i].action}`;
+    logEl.appendChild(entry);
+  }
+
+  counterEl.innerHTML = `<strong>0</strong> / ${steps.length} actions`;
+
+  // Replay with delays
+  for (let i = 0; i < steps.length; i++) {
+    await new Promise(r => setTimeout(r, 600));
+
+    const entry = document.getElementById('log-' + i);
+    entry.classList.add('active');
+    entry.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+
+    const stepData = await api('/api/step', 'POST', steps[i]);
+    state = stepData.state;
+    scores = stepData.scores;
+    render();
+    updateRewards();
+    counterEl.innerHTML = `<strong>${i + 1}</strong> / ${steps.length} actions`;
+
+    // Mark as done after brief highlight
+    await new Promise(r => setTimeout(r, 200));
+    entry.classList.remove('active');
+    entry.classList.add('done');
+  }
+
+  btn.disabled = false;
+  btn.textContent = 'Generate';
+  generating = false;
+});
+
+// Enter to generate
+document.getElementById('prompt-input').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    document.getElementById('btn-generate').click();
+  }
+});
+
+// ------ Hit testing ------
+function getCanvasPos(e) {
+  const r = cvs.getBoundingClientRect();
+  return {
+    x: Math.round((e.clientX - r.left) * 800 / r.width),
+    y: Math.round((e.clientY - r.top) * 600 / r.height)
+  };
+}
+
+function hitTest(x, y) {
+  const elems = [...(state.elements || [])].reverse();
+  for (const el of elems) {
+    if (x >= el.x && x < el.x + el.width && y >= el.y && y < el.y + el.height) return el;
+  }
+  return null;
+}
+
+function hitResizeHandle(x, y) {
+  if (selectedId === null) return false;
+  const el = (state.elements || []).find(e => e.id === selectedId);
+  if (!el) return false;
+  return Math.abs(x - (el.x + el.width)) < HANDLE_SIZE + 4 && Math.abs(y - (el.y + el.height)) < HANDLE_SIZE + 4;
+}
+
+// ------ Canvas events (manual editing) ------
+cvs.addEventListener('mousedown', async (e) => {
+  if (generating) return;
+  const pos = getCanvasPos(e);
+
+  if (currentTool === 'select' && hitResizeHandle(pos.x, pos.y)) {
+    const el = (state.elements || []).find(e => e.id === selectedId);
+    if (el) { resizing = true; resizeAnchor = { x: el.x, y: el.y }; return; }
+  }
+
+  if (currentTool === 'select') {
+    const hit = hitTest(pos.x, pos.y);
+    selectedId = hit ? hit.id : null;
+    if (hit) { dragging = true; dragOffset = { x: pos.x - hit.x, y: pos.y - hit.y }; }
+    render(); updateRewards(); return;
+  }
+
+  let actionData = null;
+  if (currentTool === 'text') {
+    actionData = { action: 'add_text', content: 'Text', x: pos.x - 75, y: pos.y - 20, width: 150, height: 40, font_size: 20, text_color: [0,0,0], background_color: [255,255,255] };
+  } else if (currentTool === 'rect') {
+    actionData = { action: 'add_shape', x: pos.x - 60, y: pos.y - 40, width: 120, height: 80, variant: 'rectangle', fill_color: [200,200,200] };
+  } else if (currentTool === 'button') {
+    actionData = { action: 'add_shape', x: pos.x - 75, y: pos.y - 25, width: 150, height: 50, variant: 'button', fill_color: [255,255,0], border_color: [200,200,0] };
+  } else if (currentTool === 'image') {
+    actionData = { action: 'add_image', x: pos.x - 60, y: pos.y - 40, width: 120, height: 80, fill_color: [100,150,200], label: 'Image' };
+  }
+
+  if (actionData) {
+    const data = await api('/api/action', 'POST', actionData);
+    state = data.state; scores = data.scores;
+    if (data.result && data.result.element_id) selectedId = data.result.element_id;
+    setTool('select'); render(); updateRewards();
+  }
+});
+
+let moveThrottle = false;
+cvs.addEventListener('mousemove', async (e) => {
+  if (generating) return;
+  const pos = getCanvasPos(e);
+
+  if (currentTool === 'select') {
+    cvs.style.cursor = hitResizeHandle(pos.x, pos.y) ? 'nwse-resize' : (hitTest(pos.x, pos.y) ? 'move' : 'default');
+  }
+
+  if (moveThrottle) return;
+
+  if (resizing && selectedId !== null) {
+    moveThrottle = true;
+    const data = await api('/api/resize', 'POST', { element_id: selectedId, width: Math.max(20, pos.x - resizeAnchor.x), height: Math.max(20, pos.y - resizeAnchor.y) });
+    state = data.state; scores = data.scores; render(); updateRewards(); moveThrottle = false; return;
+  }
+
+  if (dragging && selectedId !== null) {
+    moveThrottle = true;
+    const data = await api('/api/move', 'POST', { element_id: selectedId, x: pos.x - dragOffset.x, y: pos.y - dragOffset.y });
+    state = data.state; scores = data.scores; render(); updateRewards(); moveThrottle = false;
+  }
+});
+
+cvs.addEventListener('mouseup', () => { dragging = false; resizing = false; });
+
+cvs.addEventListener('dblclick', async (e) => {
+  if (generating) return;
+  const pos = getCanvasPos(e);
+  const hit = hitTest(pos.x, pos.y);
+  if (hit && hit.type === 'text') {
+    const newText = prompt('Edit text:', hit.content || '');
+    if (newText !== null) {
+      const data = await api('/api/action', 'POST', { action: 'set_text', element_id: hit.id, content: newText });
+      state = data.state; scores = data.scores; render(); updateRewards();
+    }
+  }
+});
+
+// ------ Toolbar ------
+function setTool(name) {
+  currentTool = name;
+  document.querySelectorAll('.tool-btn').forEach(b => b.classList.toggle('active', b.dataset.tool === name));
+  cvs.style.cursor = name === 'select' ? 'default' : 'crosshair';
+}
+document.querySelectorAll('.tool-btn').forEach(btn => btn.addEventListener('click', () => setTool(btn.dataset.tool)));
+
+// ------ Action buttons ------
+document.getElementById('btn-save').addEventListener('click', async () => { await api('/api/save', 'POST'); });
+document.getElementById('btn-clear').addEventListener('click', async () => {
+  if (generating) return;
+  selectedId = null;
+  const data = await api('/api/clear', 'POST');
+  state = data.state; scores = data.scores; render(); updateRewards();
+  document.getElementById('agent-log').innerHTML = '<div style="color:#555;font-style:italic;">Canvas cleared. Enter a prompt and click Generate.</div>';
+  document.getElementById('step-counter').innerHTML = '';
+});
+
+// Keyboard delete
+document.addEventListener('keydown', async (e) => {
+  if (generating) return;
+  if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT') return;
+  if ((e.key === 'Delete' || e.key === 'Backspace') && selectedId !== null) {
+    e.preventDefault();
+    const data = await api('/api/action', 'POST', { action: 'remove_element', element_id: selectedId });
+    selectedId = null; state = data.state; scores = data.scores; render(); updateRewards();
+  }
+});
+
+// ------ Init ------
+refreshState();
+</script>
+</body>
+</html>
